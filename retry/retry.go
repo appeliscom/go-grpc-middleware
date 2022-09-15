@@ -6,6 +6,7 @@ package grpc_retry
 import (
 	"context"
 	"fmt"
+	"google.golang.org/genproto/googleapis/rpc/errdetails"
 	"io"
 	"strconv"
 	"sync"
@@ -53,7 +54,7 @@ func UnaryClientInterceptor(optFuncs ...CallOption) grpc.UnaryClientInterceptor 
 				if parentCtx.Err() != nil {
 					logTrace(parentCtx, "grpc_retry attempt: %d, parent context error: %v", attempt, parentCtx.Err())
 					// its the parent context deadline or cancellation.
-					return fmt.Errorf("%s: %w", lastErr.Error(), previousErr)
+					return buildError(lastErr, previousErr)
 				} else if callOpts.perCallTimeout != 0 {
 					// We have set a perCallTimeout in the retry middleware, which would result in a context error if
 					// the deadline was exceeded, in which case try again.
@@ -63,16 +64,37 @@ func UnaryClientInterceptor(optFuncs ...CallOption) grpc.UnaryClientInterceptor 
 				}
 			}
 			if !isRetriable(lastErr, callOpts) {
-				return fmt.Errorf("%s: %w", lastErr.Error(), previousErr)
+				return buildError(lastErr, previousErr)
 			}
 			previousErr = lastErr
 		}
 
-		if lastErr != nil {
-			return fmt.Errorf("%s: %w", lastErr.Error(), previousErr)
-		}
+		return buildError(lastErr, previousErr)
+	}
+}
+
+func buildError(lastErr, previousErr error) error {
+	if lastErr == nil {
 		return nil
 	}
+
+	if previousErr == nil {
+		return lastErr
+	}
+
+	if se, ok := lastErr.(interface {
+		GRPCStatus() *status.Status
+	}); ok {
+		statusErr := se.GRPCStatus()
+		statusErr, _ = statusErr.WithDetails(
+			&errdetails.ErrorInfo{
+				Reason: previousErr.Error(),
+				Domain: "grpc-retry",
+			})
+		return statusErr.Err()
+	}
+
+	return fmt.Errorf("%s: %w", lastErr.Error(), previousErr)
 }
 
 // StreamClientInterceptor returns a new retrying stream client interceptor for server side streaming calls.
