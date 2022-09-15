@@ -5,6 +5,7 @@ package grpc_retry
 
 import (
 	"context"
+	"fmt"
 	"io"
 	"strconv"
 	"sync"
@@ -36,6 +37,7 @@ func UnaryClientInterceptor(optFuncs ...CallOption) grpc.UnaryClientInterceptor 
 			return invoker(parentCtx, method, req, reply, cc, grpcOpts...)
 		}
 		var lastErr error
+		var previousErr error
 		for attempt := uint(0); attempt < callOpts.max; attempt++ {
 			if err := waitRetryBackoff(attempt, parentCtx, callOpts); err != nil {
 				return err
@@ -51,19 +53,24 @@ func UnaryClientInterceptor(optFuncs ...CallOption) grpc.UnaryClientInterceptor 
 				if parentCtx.Err() != nil {
 					logTrace(parentCtx, "grpc_retry attempt: %d, parent context error: %v", attempt, parentCtx.Err())
 					// its the parent context deadline or cancellation.
-					return lastErr
+					return fmt.Errorf("%s: %w", lastErr.Error(), previousErr)
 				} else if callOpts.perCallTimeout != 0 {
 					// We have set a perCallTimeout in the retry middleware, which would result in a context error if
 					// the deadline was exceeded, in which case try again.
 					logTrace(parentCtx, "grpc_retry attempt: %d, context error from retry call", attempt)
+					previousErr = lastErr
 					continue
 				}
 			}
 			if !isRetriable(lastErr, callOpts) {
-				return lastErr
+				return fmt.Errorf("%s: %w", lastErr.Error(), previousErr)
 			}
 		}
-		return lastErr
+
+		if lastErr != nil {
+			return fmt.Errorf("%s: %w", lastErr.Error(), previousErr)
+		}
+		return nil
 	}
 }
 
