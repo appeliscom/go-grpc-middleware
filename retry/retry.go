@@ -65,6 +65,7 @@ func UnaryClientInterceptor(optFuncs ...CallOption) grpc.UnaryClientInterceptor 
 			if !isRetriable(lastErr, callOpts) {
 				return fmt.Errorf("%s: %w", lastErr.Error(), previousErr)
 			}
+			previousErr = lastErr
 		}
 
 		if lastErr != nil {
