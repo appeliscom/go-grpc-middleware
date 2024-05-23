@@ -6,7 +6,6 @@ package grpc_retry
 import (
 	"context"
 	"fmt"
-	"google.golang.org/genproto/googleapis/rpc/errdetails"
 	"io"
 	"strconv"
 	"sync"
@@ -82,17 +81,17 @@ func buildError(lastErr, previousErr error) error {
 		return lastErr
 	}
 
-	if se, ok := lastErr.(interface {
-		GRPCStatus() *status.Status
-	}); ok {
-		statusErr := se.GRPCStatus()
-		statusErr, _ = statusErr.WithDetails(
-			&errdetails.ErrorInfo{
-				Reason: previousErr.Error(),
-				Domain: "grpc-retry",
-			})
-		return statusErr.Err()
-	}
+	//if se, ok := lastErr.(interface {
+	//	GRPCStatus() *status.Status
+	//}); ok {
+	//	statusErr := se.GRPCStatus()
+	//	statusErr, _ = statusErr.WithDetails(
+	//		&errdetails.ErrorInfo{
+	//			Reason: previousErr.Error(),
+	//			Domain: "grpc-retry",
+	//		})
+	//	return statusErr.Err()
+	//}
 
 	return fmt.Errorf("%s: %w", lastErr.Error(), previousErr)
 }
